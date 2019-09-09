@@ -14,6 +14,19 @@ services:
       - "8084:8082"
       - "8888:8888"
 
+  krb5_kdc:
+    build:
+      context: docker/krb5_kdc
+    container_name: krb5_kdc
+    hostname: krb5_kdc
+    domainname: scruid_default.
+    environment:
+      KRB5_PASS: 3headsbetterthan1
+    ports:
+      - '10749:749'
+      - '10464:0464'
+      - '10088:88'
+
   delay_response:
     image: andymacdonald/clusterf-chaos-proxy:latest
     container_name: delay_response
