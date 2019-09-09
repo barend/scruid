@@ -9,6 +9,18 @@ if [ ! -f "/var/lib/krb5kdc/principal" ]; then
         echo "Using Password ${KRB5_PASS}"
     fi
 
+    if [ -z ${DRUID_PASS} ]; then
+        echo "No Password for druid provided ... Creating One"
+        KRB5_PASS=`< /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c${1:-32};echo;`
+        echo "Using Password ${KRB5_PASS}"
+    fi
+
+    if [ -z ${SCRUID_PASS} ]; then
+        echo "No Password for scruid provided ... Creating One"
+        KRB5_PASS=`< /dev/urandom tr -dc _A-Z-a-z-0-9 | head -c${1:-32};echo;`
+        echo "Using Password ${KRB5_PASS}"
+    fi
+
 echo "Creating Default Policy - Admin Access to */admin"
 echo "*/admin@SCRUID_DEFAULT *" > /var/lib/krb5kdc/kadm5.acl
 echo "*/service@SCRUID_DEFAULT aci" >> /var/lib/krb5kdc/kadm5.acl
@@ -26,6 +38,17 @@ EOT
     echo "Creating Admin Account"
     kadmin.local -q "addprinc -pw ${KRB5_PASS} admin/admin@SCRUID_DEFAULT"
 
+    echo "Creating Druid Server Account"
+    kadmin.local -q "addprinc -pw ${DRUID_PASS} druid/scruid_druid_krb5.scruid_default@SCRUID_DEFAULT"
+
+    echo "Creating Druid End-user Account"
+    kadmin.local -q "addprinc -pw ${SCRUID_PASS} scruid@SCRUID_DEFAULT"
+
+    echo "Export Druid Server Keytab"
+    kadmin.local xst -k /etc/keytabs/scruid_druid_krb5.kt druid/scruid_druid_krb5.scruid_default@SCRUID_DEFAULT
+
+    echo "Export Druid User Keytab"
+    kadmin.local xst -k /etc/keytabs/scruid_user.kt scruid@SCRUID_DEFAULT
 fi
 
 /usr/bin/supervisord -c /etc/supervisord.conf

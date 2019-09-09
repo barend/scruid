@@ -33,6 +33,11 @@ usage() {
 
 case "$1" in
   start)
+    if ! diff -q docker/krb5_druid/etc/krb5.conf docker/krb5_kdc/content/krb5.conf; then
+      # Docker doesn't let us symlink outside the context dir, so check for this error.
+      echo "FATAL: krb5.conf must be identical in both kerberos containers" 1>&2
+      exit 1
+    fi
     docker-compose up -d --build
     wait_for_port "druid" ${DRUID_HOST} ${DRUID_PORT}
   ;;
@@ -44,7 +49,7 @@ case "$1" in
     wait_for_port "druid" ${DRUID_HOST} ${DRUID_PORT} 
   ;;    
   down)
-    docker-compose down -v
+    docker-compose down -v -t 30
   ;;
   status)
     docker-compose ps

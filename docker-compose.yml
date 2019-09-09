@@ -1,5 +1,8 @@
 version: "2.0"
 
+volumes:
+  keytabs:
+
 services:
 
   scruid_druid:
@@ -22,10 +25,33 @@ services:
     domainname: scruid_default.
     environment:
       KRB5_PASS: 3headsbetterthan1
+      DRUID_PASS: druidpassword
+      SCRUID_PASS: scruidpassword
     ports:
       - '10749:749'
       - '10464:0464'
       - '10088:88'
+    volumes:
+      - keytabs:/etc/keytabs
+
+  scruid_druid_krb5:
+    build:
+      context: docker/krb5_druid
+    container_name: scruid_druid_krb5
+    hostname: scruid_druid_krb5
+    domainname: scruid_default.
+    depends_on:
+      - krb5_kdc
+    links:
+      - krb5_kdc
+    ports:
+      - "18081:8081"
+      - "18082:8082"
+      - "18083:8082"
+      - "18084:8082"
+      - "18888:8888"
+    volumes:
+      - keytabs:/etc/keytabs
 
   delay_response:
     image: andymacdonald/clusterf-chaos-proxy:latest
