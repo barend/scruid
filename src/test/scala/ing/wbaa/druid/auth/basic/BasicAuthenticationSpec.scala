@@ -28,7 +28,7 @@ import org.scalatest.concurrent._
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
-class BasicAuthenticationSpec extends WordSpec with Matchers with ScalaFutures with Inspectors {
+class BasicAuthenticationSpec extends WordSpec with Matchers with ScalaFutures {
 
   override implicit def patienceConfig: PatienceConfig = PatienceConfig(5 minutes, 100 millis)
   private val totalNumberOfEntries                     = 39244
@@ -46,9 +46,6 @@ class BasicAuthenticationSpec extends WordSpec with Matchers with ScalaFutures w
         .build(),
       hosts = Seq(QueryHost("localhost", 8088))
     )
-
-    implicit val client = config.client
-    implicit val mat    = config.client.actorMaterializer
 
     "get 401 Auth Required when querying Druid without Authentication config" in {
       val request = TimeSeriesQuery(
@@ -72,13 +69,10 @@ class BasicAuthenticationSpec extends WordSpec with Matchers with ScalaFutures w
       clientBackend = classOf[DruidAdvancedHttpClient],
       clientConfig = DruidAdvancedHttpClient
         .ConfigBuilder()
-        .withRequestFlowExtension(basicAuthenticationAddition)
+        .withRequestInterceptor(basicAuthenticationAddition)
         .build(),
       hosts = Seq(QueryHost("localhost", 8088))
     )
-
-    implicit val client = config.client
-    implicit val mat    = config.client.actorMaterializer
 
     "successfully query Druid when an Authentication config is set" in {
       val request = TimeSeriesQuery(

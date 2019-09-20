@@ -45,7 +45,7 @@ class DruidAdvancedHttpClient private (
     bufferOverflowStrategy: OverflowStrategy,
     queryRetries: Int,
     queryRetryDelay: FiniteDuration,
-    requestFlowExtension: RequestFlowExtension
+    requestInterceptor: RequestInterceptor
 )(implicit val system: ActorSystem)
     extends DruidClient
     with DruidResponseHandler {
@@ -165,10 +165,10 @@ class DruidAdvancedHttpClient private (
     val responsePromise = Promise[HttpResponse]()
 
     queue
-      .offer(requestFlowExtension.alterRequest(request) -> responsePromise)
+      .offer(requestInterceptor.interceptRequest(request) -> responsePromise)
       .flatMap {
         case QueueOfferResult.Enqueued =>
-          requestFlowExtension.alterResponse(request, responsePromise.future, this.executeRequest)
+          requestInterceptor.interceptResponse(request, responsePromise.future, this.executeRequest)
         case QueueOfferResult.Dropped =>
           Future.failed[HttpResponse](new RuntimeException("Queue overflowed. Try again later."))
         case QueueOfferResult.Failure(ex) =>
@@ -203,8 +203,8 @@ object DruidAdvancedHttpClient extends DruidClientBuilder {
     final val QueryRetries               = "query-retries"
     final val QueryRetryDelay            = "query-retry-delay"
     final val AkkaHttpHostConnectionPool = "akka.http.host-connection-pool"
-    final val RequestFlowExtension       = "authentication-backend"
-    final val RequestFlowExtensionConfig = "authentication-config"
+    final val RequestInterceptor         = "request-interceptor"
+    final val RequestInterceptorConfig   = "request-interceptor-config"
   }
 
   class ConfigBuilder {
@@ -214,7 +214,7 @@ object DruidAdvancedHttpClient extends DruidClientBuilder {
     private var queryRetries: Option[Int]                             = None
     private var queryRetryDelay: Option[java.time.Duration]           = None
     private var hostConnectionPoolParams: Option[Map[String, String]] = None
-    private var requestFlowExtension: Option[RequestFlowExtension]    = None
+    private var requestInterceptor: Option[RequestInterceptor]        = None
 
     def withQueueSize(v: Int): this.type = {
       queueSize = Option(v)
@@ -240,8 +240,8 @@ object DruidAdvancedHttpClient extends DruidClientBuilder {
       this
     }
 
-    def withRequestFlowExtension(v: RequestFlowExtension): this.type = {
-      requestFlowExtension = Option(v)
+    def withRequestInterceptor(v: RequestInterceptor): this.type = {
+      requestInterceptor = Option(v)
       this
     }
 
@@ -255,17 +255,16 @@ object DruidAdvancedHttpClient extends DruidClientBuilder {
                                   ConfigValueFactory.fromMap(settingsMap.asJava))
         )
 
-      val requestFlowExtensionClass = requestFlowExtension.map(_.getClass.getName)
-
-      val requestFlowExtensionConfig = requestFlowExtension.map(_.exportConfig.root())
+      val requestInterceptorClass  = requestInterceptor.map(_.getClass.getName)
+      val requestInterceptorConfig = requestInterceptor.map(_.exportConfig.root())
 
       val params = Seq(
-        Parameters.QueueSize                  -> queueSize,
-        Parameters.QueueOverflowStrategy      -> queueOverflowStrategy,
-        Parameters.QueryRetries               -> queryRetries,
-        Parameters.QueryRetryDelay            -> queryRetryDelay,
-        Parameters.RequestFlowExtension       -> requestFlowExtensionClass,
-        Parameters.RequestFlowExtensionConfig -> requestFlowExtensionConfig
+        Parameters.QueueSize                -> queueSize,
+        Parameters.QueueOverflowStrategy    -> queueOverflowStrategy,
+        Parameters.QueryRetries             -> queryRetries,
+        Parameters.QueryRetryDelay          -> queryRetryDelay,
+        Parameters.RequestInterceptor       -> requestInterceptorClass,
+        Parameters.RequestInterceptorConfig -> requestInterceptorConfig
       )
 
       params
@@ -318,7 +317,7 @@ object DruidAdvancedHttpClient extends DruidClientBuilder {
       clientConfig.getString(Parameters.QueueOverflowStrategy)
     )
 
-    val flowExtension = loadAuthenticationBackend(clientConfig)
+    val requestInterceptor = loadRequestInterceptor(clientConfig)
 
     new DruidAdvancedHttpClient(
       connectionFlow,
@@ -329,7 +328,7 @@ object DruidAdvancedHttpClient extends DruidClientBuilder {
       bufferOverflowStrategy,
       maxRetries,
       retryDelay,
-      flowExtension
+      requestInterceptor
     )
   }
 
@@ -351,19 +350,19 @@ object DruidAdvancedHttpClient extends DruidClientBuilder {
       .getOrElse(akkaConf)
   }
 
-  private def loadAuthenticationBackend(clientConfig: Config): RequestFlowExtension = {
+  private def loadRequestInterceptor(clientConfig: Config): RequestInterceptor = {
 
-    val flowExtension: Class[_ <: RequestFlowExtension] = Class
-      .forName(clientConfig.getString(Parameters.RequestFlowExtension))
-      .asInstanceOf[Class[RequestFlowExtension]]
+    val interceptorType: Class[_ <: RequestInterceptor] = Class
+      .forName(clientConfig.getString(Parameters.RequestInterceptor))
+      .asInstanceOf[Class[RequestInterceptor]]
 
     val runtimeMirror     = universe.runtimeMirror(getClass.getClassLoader)
-    val module            = runtimeMirror.staticModule(flowExtension.getName)
+    val module            = runtimeMirror.staticModule(interceptorType.getName)
     val obj               = runtimeMirror.reflectModule(module)
-    val clientConstructor = obj.instance.asInstanceOf[RequestFlowExtensionBuilder]
+    val clientConstructor = obj.instance.asInstanceOf[RequestInterceptorBuilder]
 
     val configuration =
-      Option(clientConfig.getConfig(Parameters.RequestFlowExtensionConfig))
+      Option(clientConfig.getConfig(Parameters.RequestInterceptorConfig))
         .getOrElse(ConfigFactory.empty())
 
     clientConstructor(configuration)
